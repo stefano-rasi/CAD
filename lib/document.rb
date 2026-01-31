@@ -1,0 +1,3 @@
+require 'native'
+
+Document = $$.document
