@@ -10,17 +10,19 @@ set :port, RUBY_PORT
 get '/views/*' do
     content_type 'text/javascript'
 
-    builder = Opal::Builder.new()
+    path = 'views/' + params[:splat][0]
 
-    builder.append_paths('lib')
+    builder = Opal::Builder.new()
 
     builder.build_str(%Q{
         require 'opal'
 
         PYTHON_PORT = #{PYTHON_PORT}
-    })
+    }, '(inline)')
 
-    builder.build(params[:splat][0], debug: true)
+    builder.append_paths('.')
+
+    builder.build(path, debug: true)
 
     "#{builder.to_s}\n//# sourceMappingURL=data:application/json;base64,#{Base64.strict_encode64(JSON.dump(builder.source_map.as_json))}"
 end

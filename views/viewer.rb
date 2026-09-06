@@ -1,13 +1,13 @@
 require 'opal'
 
-require 'three'
-require 'window'
-require 'console'
-require 'document'
+require 'lib/three'
+require 'lib/window'
+require 'lib/console'
+require 'lib/document'
 
 PYTHON_SERVER = "http://localhost:#{PYTHON_PORT}"
 
-class Viewer
+module Viewer
     extend self
 
     DEBUG = false

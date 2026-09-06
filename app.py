@@ -23,7 +23,7 @@ def model(path):
         'viewer.html',
 
         path=path,
-        opal_port=RUBY_PORT
+        ruby_port=RUBY_PORT
     )
 
 @app.route('/stl/models/<path:path>')
