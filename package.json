@@ -1,0 +1,12 @@
+{
+  "name": "cad",
+  "private": true,
+  "description": "Ricostruito: bundle di three.js per il viewer (npx webpack -> static/three.js)",
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.97.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

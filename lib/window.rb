@@ -1,0 +1,3 @@
+require 'native'
+
+Window = $$.window
