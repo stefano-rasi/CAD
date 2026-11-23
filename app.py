@@ -49,7 +49,12 @@ def stl(path):
         with open(path, 'r') as file:
             script = file.read()
 
-            exec(script, { 'cq': cq, 'show_object': show_object })
+            exec(script, {
+                'cq': cq,
+                'show_object': show_object,
+                '__file__': os.path.abspath(path),
+                '__name__': '__main__'
+            })
 
         for obj in objects:
             tmp = tempfile.NamedTemporaryFile(suffix='.stl', delete=False)
