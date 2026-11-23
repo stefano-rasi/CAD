@@ -145,8 +145,14 @@ class Viewer
                 reload
             elsif key == 'e'
                 export_selected
+            elsif key == 'h'
+                toggle_help()
             end
         end
+    end
+
+    def toggle_help()
+        Document.getElementById('help').classList.toggle('hidden')
     end
 
     def listen_to_resize()
