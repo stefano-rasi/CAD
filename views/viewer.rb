@@ -5,18 +5,56 @@ require 'lib/window'
 require 'lib/console'
 require 'lib/document'
 
-module Viewer
-    extend self
-
+class Viewer
     DEBUG = false
 
     CLICK_TOLERANCE = 5
 
+    INITIAL_VIEW_SIZE = 100
+
+    BACKGROUND_COLOR = Three::Color.new('hsl(0, 0%, 70%)')
+    LIGHT_COLOR = Three::Color.new('white')
     MESH_COLOR = Three::Color.new('hsl(50, 100%, 50%)')
     LINE_COLOR = Three::Color.new('hsl(0, 0%, 0%)')
     SELECTED_LINE_COLOR = Three::Color.new('hsl(0, 0%, 100%)')
 
-    def init()
+    VIEW_DIRECTIONS = {
+        top: [ 0, 0, 1 ],
+        left: [ 0, -1, 0 ],
+        front: [ 1, 0, 0 ],
+        isometric: [ 1, -1, 1 ]
+    }
+
+    KEY_VIEWS = {
+        't' => :top,
+        'l' => :left,
+        'f' => :front,
+        'i' => :isometric
+    }
+
+    def start()
+        @model_path = Document.getElementById('path').value
+
+        @objects = []
+        @selected = nil
+        @loading = false
+
+        create_renderer
+        create_scene
+        create_camera
+        create_lights
+        create_controls
+
+        listen_to_mouse
+        listen_to_keyboard
+        listen_to_resize
+
+        render
+
+        load_objects { fit_camera }
+    end
+
+    def create_renderer()
         @renderer = Three::WebGLRenderer.new({
             antialias: true
         })
@@ -24,44 +62,32 @@ module Viewer
         @renderer.setSize(Window.innerWidth, Window.innerHeight)
 
         Document.body.appendChild(@renderer.domElement)
+    end
 
+    def create_scene()
         @scene = Three::Scene.new()
 
-        @scene.background = Three::Color.new('hsl(0, 0%, 70%)')
+        @scene.background = BACKGROUND_COLOR
 
-        ambient_light = Three::AmbientLight.new(
-            Three::Color.new('hsl(0, 100%, 100%)')
-        )
+        @scene.add(Three::AmbientLight.new(LIGHT_COLOR))
 
-        @scene.add(ambient_light)
+        @scene.add(Three::AxesHelper.new(1000000))
+    end
 
-        axes_helper = Three::AxesHelper.new(1000000)
-
-        @scene.add(axes_helper)
-
-        aspect = Window.innerWidth / Window.innerHeight
-
-        distance = 100
-
-        @camera = Three::OrthographicCamera.new(
-            -distance * aspect / 2,
-            distance * aspect / 2,
-            distance / 2,
-            -distance / 2,
-            0.1,
-            1000000
-        )
+    def create_camera()
+        @camera = Three::OrthographicCamera.new(-1, 1, 1, -1, 0.1, 1000000)
 
         @camera.up.set(0, 0, 1)
 
-        @camera.position.set(distance, -distance, distance)
+        @camera.position.set(INITIAL_VIEW_SIZE, -INITIAL_VIEW_SIZE, INITIAL_VIEW_SIZE)
+
+        set_frustum(INITIAL_VIEW_SIZE)
 
         @scene.add(@camera)
+    end
 
-        directional_light = Three::DirectionalLight.new(
-            Three::Color.new('hsl(0, 100%, 100%)'),
-            2
-        )
+    def create_lights()
+        directional_light = Three::DirectionalLight.new(LIGHT_COLOR, 2)
 
         directional_light.position.set(1, 1, 0)
 
@@ -75,11 +101,11 @@ module Viewer
         directional_light.target = light_target
 
         if DEBUG
-            light_helper = Three::DirectionalLightHelper.new(directional_light)
-
-            @scene.add(light_helper)
+            @scene.add(Three::DirectionalLightHelper.new(directional_light))
         end
+    end
 
+    def create_controls()
         @controls = Three::OrbitControls.new(@camera, @renderer.domElement)
 
         @controls.mouseButtons = {
@@ -87,187 +113,139 @@ module Viewer
             RIGHT: Three::MOUSE.DOLLY,
             MIDDLE: Three::MOUSE.PAN
         }
+    end
 
-        @renderer.render(@scene, @camera)
-
-        render()
-
-        @objects = []
-
-        load_objects do
-            unless @objects.empty?
-                box = Three::Box3.new()
-    
-                @objects.each do |object|
-                    box.expandByObject(object[:mesh])
-                end
-    
-                size = Three::Vector3.new()
-    
-                box.getSize(size)
-    
-                center = Three::Vector3.new()
-    
-                box.getCenter(center)
-    
-                aspect = Window.innerWidth / Window.innerHeight
-    
-                distance = [ size.x, size.y, size.z ].max
-    
-                @camera.top = distance / 2
-                @camera.left = -distance * aspect / 2
-                @camera.right = distance * aspect / 2
-                @camera.bottom = -distance / 2
-
-                @controls.target.copy(center)
-
-                view(:isometric)
-            end
-        end
-
-        mouse_down_x = nil
-        mouse_down_y = nil
-
-        @selected = nil
+    def listen_to_mouse()
+        mouse_down = nil
 
         @renderer.domElement.addEventListener('mousedown') do |event|
             event = Native(event)
 
-            mouse_down_x = event.clientX
-            mouse_down_y = event.clientY
+            mouse_down = [ event.clientX, event.clientY ]
         end
 
         @renderer.domElement.addEventListener('mouseup') do |event|
             event = Native(event)
 
-            clicked = mouse_down_x &&
-                (event.clientX - mouse_down_x).abs <= CLICK_TOLERANCE &&
-                (event.clientY - mouse_down_y).abs <= CLICK_TOLERANCE
-
-            if clicked
-                if event.button == 0
-                    line_material = Three::LineBasicMaterial.new({
-                        color: LINE_COLOR
-                    })
-
-                    if @selected
-                        @selected[:lines].material = line_material
-    
-                        @selected = nil
-                    end
-    
-                    mouse = Three::Vector2.new()
-    
-                    mouse.x = (event.clientX / Window.innerWidth) * 2 - 1
-                    mouse.y = -(event.clientY / Window.innerHeight) * 2 + 1
-    
-                    raycaster = Three::Raycaster.new()
-    
-                    raycaster.setFromCamera(mouse, @camera)
-    
-                    meshes = @objects.map { |object| object[:mesh] }
-    
-                    intersects = raycaster.intersectObjects(meshes)
-    
-                    unless intersects.empty?
-                        @selected = @objects.find { |object|
-                            intersects[0].object == object[:mesh]
-                        }
-
-                        line_material = Three::LineBasicMaterial.new({
-                            color: SELECTED_LINE_COLOR
-                        })
-    
-                        @selected[:lines].material = line_material
-                    end
-                end
+            if event.button == 0 && mouse_down && click?(mouse_down, event)
+                select_at(event.clientX, event.clientY)
             end
         end
+    end
 
+    def listen_to_keyboard()
         Window.addEventListener('keydown') do |event|
-            event = Native(event)
+            key = Native(event).key
 
-            case event.key
-            when 't'
-                view(:top)
-            when 'l'
-                view(:left)
-            when 'f'
-                view(:front)
-            when 'i'
-                view(:isometric)
-            when 'r'
-                unless @loading
-                    @loading = true
-
-                    @objects.each do |object|
-                        @scene.remove(object[:mesh])
-                        @scene.remove(object[:lines])
-
-                        object[:mesh].geometry.dispose()
-                        object[:mesh].material.dispose()
-                        object[:lines].geometry.dispose()
-                        object[:lines].material.dispose()
-                    end
-
-                    @objects = []
-
-                    @selected = nil
-
-                    load_objects do
-                        @loading = false
-                    end
-                end
-            when 'e'
-                if @selected
-                    Window.location.href = "/export/#{@selected[:index]}/models/#{model_path}"
-                end
+            if KEY_VIEWS[key]
+                view(KEY_VIEWS[key])
+            elsif key == 'r'
+                reload
+            elsif key == 'e'
+                export_selected
             end
         end
+    end
 
+    def listen_to_resize()
         Window.addEventListener('resize') do
             resize
         end
     end
 
-    def view(type)
-        target = @controls.target.clone()
+    def click?(mouse_down, event)
+        (event.clientX - mouse_down[0]).abs <= CLICK_TOLERANCE &&
+            (event.clientY - mouse_down[1]).abs <= CLICK_TOLERANCE
+    end
 
-        distance = @camera.position.distanceTo(target)
+    def select_at(x, y)
+        deselect
 
-        case type
-        when :top
-            @camera.position.set(
-                target.x,
-                target.y,
-                target.z + distance
-            )
-        when :left
-            @camera.position.set(
-                target.x,
-                target.y - distance,
-                target.z
-            )
-        when :front
-            @camera.position.set(
-                target.x + distance,
-                target.y,
-                target.z
-            )
-        when :isometric
-            @camera.position.set(
-                target.x + distance,
-                target.y - distance,
-                target.z + distance
-            )
+        mouse = Three::Vector2.new(
+            (x / Window.innerWidth) * 2 - 1,
+            -(y / Window.innerHeight) * 2 + 1
+        )
+
+        raycaster = Three::Raycaster.new()
+
+        raycaster.setFromCamera(mouse, @camera)
+
+        intersects = raycaster.intersectObjects(@objects.map { |object| object[:mesh] })
+
+        unless intersects.empty?
+            @selected = @objects.find { |object| intersects[0].object == object[:mesh] }
+
+            @selected[:lines].material.color.copy(SELECTED_LINE_COLOR)
         end
+    end
+
+    def deselect()
+        if @selected
+            @selected[:lines].material.color.copy(LINE_COLOR)
+
+            @selected = nil
+        end
+    end
+
+    def export_selected()
+        if @selected
+            Window.location.href = "/export/#{@selected[:index]}/models/#{@model_path}"
+        end
+    end
+
+    def view(type, distance = nil)
+        target = @controls.target
+
+        distance ||= @camera.position.distanceTo(target)
+
+        direction = Three::Vector3.new(*VIEW_DIRECTIONS[type]).normalize()
+
+        @camera.position.copy(target)
+        @camera.position.addScaledVector(direction, distance)
+
+        @camera.updateProjectionMatrix()
+    end
+
+    def fit_camera()
+        unless @objects.empty?
+            box = Three::Box3.new()
+
+            @objects.each do |object|
+                box.expandByObject(object[:mesh])
+            end
+
+            size = Three::Vector3.new()
+
+            box.getSize(size)
+
+            center = Three::Vector3.new()
+
+            box.getCenter(center)
+
+            largest_size = [ size.x, size.y, size.z ].max
+
+            set_frustum(largest_size)
+
+            @controls.target.copy(center)
+
+            view(:isometric, largest_size * 2)
+        end
+    end
+
+    def set_frustum(height)
+        aspect = Window.innerWidth / Window.innerHeight
+
+        @camera.top = height / 2
+        @camera.bottom = -height / 2
+        @camera.left = -height * aspect / 2
+        @camera.right = height * aspect / 2
 
         @camera.updateProjectionMatrix()
     end
 
     def render()
         Window.requestAnimationFrame do
-            render()
+            render
         end
 
         @controls.update()
@@ -278,84 +256,91 @@ module Viewer
     def resize()
         @renderer.setSize(Window.innerWidth, Window.innerHeight)
 
-        aspect = Window.innerWidth / Window.innerHeight
-
-        distance = @camera.top - @camera.bottom
-
-        @camera.top =  distance / 2
-        @camera.left = -distance * aspect / 2
-        @camera.right = distance * aspect / 2
-        @camera.bottom = -distance / 2
-
-        @camera.updateProjectionMatrix()
+        set_frustum(@camera.top - @camera.bottom)
     end
 
-    def model_path()
-        Document.getElementById('path').value
+    def reload()
+        unless @loading
+            clear_objects
+
+            load_objects
+        end
     end
 
-    def load_objects()
-        Window.fetch("/stl/models/#{model_path}").then do |response|
+    def clear_objects()
+        @objects.each do |object|
+            @scene.remove(object[:mesh])
+            @scene.remove(object[:lines])
+
+            object[:mesh].geometry.dispose()
+            object[:mesh].material.dispose()
+            object[:lines].geometry.dispose()
+            object[:lines].material.dispose()
+        end
+
+        @objects = []
+
+        @selected = nil
+    end
+
+    def load_objects(&on_loaded)
+        @loading = true
+
+        Window.fetch("/stl/models/#{@model_path}").then do |response|
             response = Native(response)
 
             if response.ok
                 response.json().then do |objects|
-                    objects.each_with_index do |object, index|
-                        object = Native(object)
+                    add_objects(objects)
 
-                        loader = Three::STLLoader.new()
-
-                        geometry = loader.parseBase64(object['stl_base64'])
-
-                        material = Three::MeshStandardMaterial.new()
-
-                        if object['color']
-                            material.color = Three::Color.new(object['color'])
-                        else
-                            material.color = MESH_COLOR
-                        end
-
-                        if object['opacity']
-                            material.transparent = true
-                            material.opacity = object['opacity']
-                        end
-
-                        mesh = Three::Mesh.new(geometry, material)
-
-                        @scene.add(mesh)
-
-                        edges = Three::EdgesGeometry.new(geometry, 30)
-
-                        line_material = Three::LineBasicMaterial.new({
-                            color: LINE_COLOR
-                        })
-
-                        lines = Three::LineSegments.new(edges, line_material)
-
-                        @scene.add(lines)
-
-                        @objects << {
-                            index: index,
-                            mesh: mesh,
-                            lines: lines
-                        }
-                    end
-
-                    if block_given?
-                        yield
-                    end
-                end
+                    on_loaded.call if on_loaded
+                end.to_n
             else
                 response.text().then do |error|
-                    if block_given?
-                        yield
-                    end
-
                     Window.alert(error)
-                end
+                end.to_n
             end
+        end.catch do |error|
+            Window.alert(Native(error).message)
+        end.finally do
+            @loading = false
+        end
+    end
+
+    def add_objects(objects)
+        objects.each_with_index do |object, index|
+            object = Native(object)
+
+            geometry = Three::STLLoader.new().parseBase64(object['stl_base64'])
+
+            material = Three::MeshStandardMaterial.new({
+                color: object['color'] || MESH_COLOR
+            })
+
+            if object['opacity']
+                material.transparent = true
+                material.opacity = object['opacity']
+            end
+
+            mesh = Three::Mesh.new(geometry, material)
+
+            lines = Three::LineSegments.new(
+                Three::EdgesGeometry.new(geometry, 30),
+                Three::LineBasicMaterial.new({
+                    color: LINE_COLOR
+                })
+            )
+
+            @scene.add(mesh)
+            @scene.add(lines)
+
+            @objects << {
+                index: index,
+                mesh: mesh,
+                lines: lines
+            }
         end
     end
 end
 
-Viewer.init()
+Viewer.new.start

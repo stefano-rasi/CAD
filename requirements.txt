@@ -1,2 +1,0 @@
-cadquery>=2.5
-flask>=3.1
