@@ -1,0 +1,38 @@
+body {
+    margin: 0;
+    padding: 0;
+}
+
+#help {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font: 13px/1.7 system-ui, sans-serif;
+    pointer-events: none;
+    user-select: none;
+}
+
+#help.hidden {
+    display: none;
+}
+
+#help kbd {
+    display: inline-block;
+    min-width: 1.4em;
+    margin-right: 6px;
+    padding: 0 4px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 3px;
+    font: inherit;
+    text-align: center;
+}
+
+#help hr {
+    margin: 6px 0;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
