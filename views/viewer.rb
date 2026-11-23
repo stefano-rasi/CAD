@@ -12,10 +12,10 @@ class Viewer
 
     INITIAL_VIEW_SIZE = 100
 
-    BACKGROUND_COLOR = Three::Color.new('hsl(0, 0%, 70%)')
-    LIGHT_COLOR = Three::Color.new('white')
-    MESH_COLOR = Three::Color.new('hsl(50, 100%, 50%)')
     LINE_COLOR = Three::Color.new('hsl(0, 0%, 0%)')
+    MESH_COLOR = Three::Color.new('hsl(50, 100%, 50%)')
+    LIGHT_COLOR = Three::Color.new('white')
+    BACKGROUND_COLOR = Three::Color.new('hsl(0, 0%, 70%)')
     SELECTED_LINE_COLOR = Three::Color.new('hsl(0, 0%, 100%)')
 
     VIEW_DIRECTIONS = {
@@ -36,22 +36,24 @@ class Viewer
         @model_path = Document.getElementById('path').value
 
         @objects = []
-        @selected = nil
+
         @loading = false
 
-        create_renderer
-        create_scene
-        create_camera
-        create_lights
-        create_controls
+        @selected = nil
 
-        listen_to_mouse
-        listen_to_keyboard
-        listen_to_resize
+        create_renderer()
+        create_scene()
+        create_camera()
+        create_lights()
+        create_controls()
 
-        render
+        listen_to_mouse()
+        listen_to_keyboard()
+        listen_to_resize()
 
-        load_objects { fit_camera }
+        render()
+
+        load_objects { fit_camera() }
     end
 
     def create_renderer()
