@@ -5,12 +5,12 @@ require 'lib/window'
 require 'lib/console'
 require 'lib/document'
 
-PYTHON_SERVER = "http://localhost:#{PYTHON_PORT}"
-
 module Viewer
     extend self
 
     DEBUG = false
+
+    CLICK_TOLERANCE = 5
 
     MESH_COLOR = Three::Color.new('hsl(50, 100%, 50%)')
     LINE_COLOR = Three::Color.new('hsl(0, 0%, 0%)')
@@ -35,21 +35,6 @@ module Viewer
 
         @scene.add(ambient_light)
 
-        directional_light = Three::DirectionalLight.new(
-            Three::Color.new('hsl(0, 100%, 100%)'),
-            2
-        )
-
-        directional_light.position.set(10, 10, 10)
-
-        @scene.add(directional_light)
-
-        if DEBUG
-            light_helper = Three::DirectionalLightHelper.new(directional_light)
-
-            @scene.add(light_helper)
-        end
-
         axes_helper = Three::AxesHelper.new(1000000)
 
         @scene.add(axes_helper)
@@ -70,6 +55,30 @@ module Viewer
         @camera.up.set(0, 0, 1)
 
         @camera.position.set(distance, -distance, distance)
+
+        @scene.add(@camera)
+
+        directional_light = Three::DirectionalLight.new(
+            Three::Color.new('hsl(0, 100%, 100%)'),
+            2
+        )
+
+        directional_light.position.set(1, 1, 0)
+
+        light_target = Three::Object3D.new()
+
+        light_target.position.set(0, 0, -1)
+
+        @camera.add(directional_light)
+        @camera.add(light_target)
+
+        directional_light.target = light_target
+
+        if DEBUG
+            light_helper = Three::DirectionalLightHelper.new(directional_light)
+
+            @scene.add(light_helper)
+        end
 
         @controls = Three::OrbitControls.new(@camera, @renderer.domElement)
 
@@ -116,20 +125,24 @@ module Viewer
             end
         end
 
-        clicked = false
+        mouse_down_x = nil
+        mouse_down_y = nil
 
         @selected = nil
 
-        @renderer.domElement.addEventListener('mousedown') do
-            clicked = true
-        end
+        @renderer.domElement.addEventListener('mousedown') do |event|
+            event = Native(event)
 
-        @renderer.domElement.addEventListener('mousemove') do
-            clicked = false
+            mouse_down_x = event.clientX
+            mouse_down_y = event.clientY
         end
 
         @renderer.domElement.addEventListener('mouseup') do |event|
             event = Native(event)
+
+            clicked = mouse_down_x &&
+                (event.clientX - mouse_down_x).abs <= CLICK_TOLERANCE &&
+                (event.clientY - mouse_down_y).abs <= CLICK_TOLERANCE
 
             if clicked
                 if event.button == 0
@@ -190,9 +203,16 @@ module Viewer
                     @objects.each do |object|
                         @scene.remove(object[:mesh])
                         @scene.remove(object[:lines])
+
+                        object[:mesh].geometry.dispose()
+                        object[:mesh].material.dispose()
+                        object[:lines].geometry.dispose()
+                        object[:lines].material.dispose()
                     end
 
                     @objects = []
+
+                    @selected = nil
 
                     load_objects do
                         @loading = false
@@ -200,27 +220,7 @@ module Viewer
                 end
             when 'e'
                 if @selected
-                    exporter = Three::STLExporter.new()
-
-                    stl = exporter.parse(@selected[:mesh])
-
-                    blob = JS.new($$[:Blob], [ stl ], { type: 'application/octet-stream' })
-
-                    Window.showSaveFilePicker({
-                        types: [{
-                            accept: { 'model/stl': [ '.stl'] }
-                        }]
-                    }).then do |file|
-                        file = Native(file)
-
-                        file.createWritable().then do |writable|
-                            writable = Native(writable)
-
-                            writable.write(blob).then do
-                                writable.close()
-                            end
-                        end
-                    end
+                    Window.location.href = "/export/#{@selected[:index]}/models/#{model_path}"
                 end
             end
         end
@@ -290,24 +290,24 @@ module Viewer
         @camera.updateProjectionMatrix()
     end
 
-    def load_objects()
-        path = Document.getElementById('path').value
+    def model_path()
+        Document.getElementById('path').value
+    end
 
-        Window.fetch("#{PYTHON_SERVER}/stl/#{path}").then do |response|
+    def load_objects()
+        Window.fetch("/stl/models/#{model_path}").then do |response|
             response = Native(response)
 
             if response.ok
                 response.json().then do |objects|
-                    objects.each do |object|
+                    objects.each_with_index do |object, index|
                         object = Native(object)
 
                         loader = Three::STLLoader.new()
 
                         geometry = loader.parseBase64(object['stl_base64'])
 
-                        material = Three::MeshStandardMaterial.new({
-                            transparent: true
-                        })
+                        material = Three::MeshStandardMaterial.new()
 
                         if object['color']
                             material.color = Three::Color.new(object['color'])
@@ -316,6 +316,7 @@ module Viewer
                         end
 
                         if object['opacity']
+                            material.transparent = true
                             material.opacity = object['opacity']
                         end
 
@@ -334,6 +335,7 @@ module Viewer
                         @scene.add(lines)
 
                         @objects << {
+                            index: index,
                             mesh: mesh,
                             lines: lines
                         }

@@ -18,19 +18,47 @@ namespace :three do
     end
 end
 
-task :start, [:ruby_port, :python_port] => 'three:build' do |task, arguments|
-    ruby_port = arguments.fetch(:ruby_port, '4567')
-    python_port = arguments.fetch(:python_port, '5000')
+namespace :viewer do
+    output = 'static/viewer.js'
 
-    python = Process.spawn('python', 'app.py', ruby_port, python_port)
+    sources = FileList['views/**/*.rb', 'lib/**/*.rb']
 
-    begin
-        ruby 'app.rb', ruby_port, python_port
-    ensure
-        Process.kill(:KILL, python) rescue nil
+    file output => sources do
+        require 'opal'
 
-        Process.wait(python) rescue nil
+        builder = Opal::Builder.new()
+
+        builder.append_paths('.')
+
+        builder.build('views/viewer.rb', debug: true)
+
+        source_map = Base64.strict_encode64(JSON.dump(builder.source_map.as_json))
+
+        mkdir_p File.dirname(output)
+
+        File.write(output, "#{builder.to_s}\n//# sourceMappingURL=data:application/json;base64,#{source_map}")
+
+        puts "Built #{output}"
+    end
+
+    task build: output
+
+    task :watch do
+        loop do
+            Rake::Task[output].reenable
+            Rake::Task[output].invoke
+
+            sleep 1
+        end
     end
 end
 
-task default: 'three:build'
+task build: [ 'three:build', 'viewer:build' ]
+
+task :start, [:port] => :build do |task, arguments|
+    port = arguments.fetch(:port, '5000')
+
+    sh 'python', 'app.py', port
+end
+
+task default: :build

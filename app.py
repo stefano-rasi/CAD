@@ -1,78 +1,111 @@
-import os
 import sys
 import base64
 import tempfile
 import traceback
 
-from flask import Flask, render_template
+from pathlib import Path
 
-import yaml
+from flask import Flask, Response, abort, render_template
 
 import cadquery as cq
 
-RUBY_PORT = sys.argv[1]
-PYTHON_PORT = sys.argv[2]
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+
+STL_TOLERANCE = 0.001
+STL_ANGULAR_TOLERANCE = 0.1
 
 app = Flask(__name__)
 
-@app.route('/models/<path:path>')
-def model(path):
-    path = os.path.join('models', path)
+exported_stls = {}
 
-    return render_template(
-        'viewer.html',
+def model_file(path):
+    if '..' in Path(path).parts:
+        abort(404)
 
-        path=path,
-        ruby_port=RUBY_PORT
+    return Path('models') / path
+
+def flatten(cq_object):
+    if isinstance(cq_object, (tuple, list)):
+        for item in cq_object:
+            yield from flatten(item)
+    else:
+        yield cq_object
+
+def run_model(file):
+    objects = []
+
+    def show_object(cq_object, color=None, opacity=None):
+        for item in flatten(cq_object):
+            objects.append({
+                'color': color,
+                'opacity': opacity,
+                'cq_object': item
+            })
+
+    code = compile(file.read_text(), str(file), 'exec')
+
+    exec(code, {
+        'cq': cq,
+        'show_object': show_object,
+        '__file__': str(file.absolute()),
+        '__name__': '__main__'
+    })
+
+    return objects
+
+def to_stl(cq_object, directory):
+    stl_file = Path(directory) / 'object.stl'
+
+    cq.exporters.export(
+        cq_object,
+        str(stl_file),
+        tolerance=STL_TOLERANCE,
+        angularTolerance=STL_ANGULAR_TOLERANCE
     )
+
+    return stl_file.read_bytes()
+
+@app.route('/models/<path:path>')
+def viewer(path):
+    return render_template('viewer.html', path=path)
 
 @app.route('/stl/models/<path:path>')
 def stl(path):
+    file = model_file(path)
+
     try:
-        objects = []
+        objects = run_model(file)
 
-        def show_object(cq_object, color=None, opacity=None):
-            if isinstance(cq_object, tuple):
-                cq_objects = cq_object
-            else:
-                cq_objects = [ cq_object ]
-
-            for cq_object in cq_objects:
-                objects.append({
-                    'color': color,
-                    'opacity': opacity,
-                    'cq_object': cq_object
-                })
-
-        path = os.path.join('models', path)
-
-        with open(path, 'r') as file:
-            script = file.read()
-
-            exec(script, {
-                'cq': cq,
-                'show_object': show_object,
-                '__file__': os.path.abspath(path),
-                '__name__': '__main__'
-            })
-
-        for obj in objects:
-            tmp = tempfile.NamedTemporaryFile(suffix='.stl', delete=False)
-
-            obj['cq_object'].val().exportStl(tmp.name)
-
-            with open(tmp.name, 'rb') as stl_file:
-                stl_bytes = stl_file.read()
-
-                stl_base64 = base64.b64encode(stl_bytes).decode('utf-8')
-
-            obj['stl_base64'] = stl_base64
-
-            del obj['cq_object']
-
-        return objects
-    except Exception as e:
+        with tempfile.TemporaryDirectory() as directory:
+            stls = [to_stl(obj['cq_object'], directory) for obj in objects]
+    except Exception:
         return traceback.format_exc(), 500
 
+    exported_stls[path] = stls
+
+    return [
+        {
+            'color': obj['color'],
+            'opacity': obj['opacity'],
+            'stl_base64': base64.b64encode(stl).decode('utf-8')
+        }
+        for obj, stl in zip(objects, stls)
+    ]
+
+@app.route('/export/<int:index>/models/<path:path>')
+def export(index, path):
+    stls = exported_stls.get(path)
+
+    if stls is None or index >= len(stls):
+        abort(404)
+
+    filename = f'{Path(path).stem}-{index + 1}.stl'
+
+    return Response(
+        stls[index],
+        mimetype='model/stl',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
+
 if __name__ == '__main__':
-    app.run(port=PYTHON_PORT)
+    app.run(port=PORT)

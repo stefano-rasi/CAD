@@ -30,12 +30,6 @@ module Three
         end
     end
 
-    class STLExporter
-        def self.new(*args)
-            Native(JS.new($$[:STLExporter], *args.map(&:to_n)))
-        end
-    end
-
     class OrbitControls
         def self.new(*args)
             Native(JS.new($$[:OrbitControls], *args.map(&:to_n)))
