@@ -53,7 +53,7 @@ namespace :opal do
     end
 end
 
-file 'static/viewer.css' => 'views/viewer.css' do |task|
+file 'static/viewer.css' => 'styles/viewer.css' do |task|
     mkdir_p File.dirname(task.name)
 
     cp task.source, task.name
