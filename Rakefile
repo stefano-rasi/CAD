@@ -1,4 +1,4 @@
-namespace :three do
+namespace :node do
     output = 'static/three.js'
 
     modules = 'node_modules/.package-lock.json'
@@ -18,7 +18,7 @@ namespace :three do
     end
 end
 
-namespace :viewer do
+namespace :opal do
     output = 'static/viewer.js'
 
     sources = FileList['views/**/*.rb', 'lib/**/*.rb']
@@ -53,7 +53,7 @@ namespace :viewer do
     end
 end
 
-task build: [ 'three:build', 'viewer:build' ]
+task build: [ 'node:build', 'opal:build' ]
 
 task :start, [:port] => :build do |task, arguments|
     port = arguments.fetch(:port, '5000')
