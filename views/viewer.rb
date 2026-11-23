@@ -142,9 +142,9 @@ class Viewer
             if KEY_VIEWS[key]
                 view(KEY_VIEWS[key])
             elsif key == 'r'
-                reload
+                reload()
             elsif key == 'e'
-                export_selected
+                export_selected()
             elsif key == 'h'
                 toggle_help()
             end
