@@ -8,14 +8,17 @@ require 'lib/document'
 class Viewer
     DEBUG = false
 
+    MESH_COLOR = Three::Color.new('hsl(50, 100%, 50%)')
+
+    LIGHT_COLOR = Three::Color.new('white')
+
     CLICK_TOLERANCE = 5
+
+    BACKGROUND_COLOR = Three::Color.new('hsl(0, 0%, 70%)')
 
     INITIAL_VIEW_SIZE = 100
 
     LINE_COLOR = Three::Color.new('hsl(0, 0%, 0%)')
-    MESH_COLOR = Three::Color.new('hsl(50, 100%, 50%)')
-    LIGHT_COLOR = Three::Color.new('white')
-    BACKGROUND_COLOR = Three::Color.new('hsl(0, 0%, 70%)')
     SELECTED_LINE_COLOR = Three::Color.new('hsl(0, 0%, 100%)')
 
     VIEW_DIRECTIONS = {
@@ -42,14 +45,17 @@ class Viewer
         @selected = nil
 
         create_renderer()
+
         create_scene()
+
         create_camera()
         create_lights()
         create_controls()
 
+        listen_to_resize()
+
         listen_to_mouse()
         listen_to_keyboard()
-        listen_to_resize()
 
         render()
 
