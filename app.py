@@ -5,7 +5,7 @@ import traceback
 
 from pathlib import Path
 
-from flask import Flask, Response, abort, render_template
+from flask import Flask, Response, abort, render_template, send_from_directory
 
 import cadquery as cq
 
@@ -15,6 +15,8 @@ STL_TOLERANCE = 0.001
 STL_ANGULAR_TOLERANCE = 0.1
 
 app = Flask(__name__)
+
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 exported_stls = {}
 
@@ -64,6 +66,10 @@ def to_stl(cq_object, directory):
     )
 
     return stl_file.read_bytes()
+
+@app.route('/styles/<path:path>')
+def styles(path):
+    return send_from_directory('styles', path)
 
 @app.route('/models/<path:path>')
 def viewer(path):

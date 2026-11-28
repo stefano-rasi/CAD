@@ -53,13 +53,7 @@ namespace :opal do
     end
 end
 
-file 'static/viewer.css' => 'styles/viewer.css' do |task|
-    mkdir_p File.dirname(task.name)
-
-    cp task.source, task.name
-end
-
-task build: [ 'node:build', 'opal:build', 'static/viewer.css' ]
+task build: [ 'node:build', 'opal:build' ]
 
 task :start, [:port] => :build do |task, arguments|
     port = arguments.fetch(:port, '5000')
