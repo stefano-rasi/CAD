@@ -56,9 +56,7 @@ end
 task build: [ 'node:build', 'opal:build' ]
 
 task :start, [:port] => :build do |task, arguments|
-    port = arguments.fetch(:port, '5000')
-
-    sh 'python', 'app.py', port
+    sh 'python', 'app.py', *arguments[:port]
 end
 
 task default: :build

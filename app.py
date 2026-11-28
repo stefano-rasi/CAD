@@ -5,8 +5,7 @@ import traceback
 
 from pathlib import Path
 
-from flask import Flask, Response, abort, render_template, send_from_directory
-
+import flask
 import cadquery as cq
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
@@ -14,7 +13,7 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
 STL_TOLERANCE = 0.001
 STL_ANGULAR_TOLERANCE = 0.1
 
-app = Flask(__name__)
+app = flask.Flask(__name__)
 
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
@@ -22,7 +21,7 @@ exported_stls = {}
 
 def model_file(path):
     if '..' in Path(path).parts:
-        abort(404)
+        flask.abort(404)
 
     return Path('models') / path
 
@@ -48,9 +47,9 @@ def run_model(file):
 
     exec(code, {
         'cq': cq,
-        'show_object': show_object,
+        '__name__': '__main__',
         '__file__': str(file.absolute()),
-        '__name__': '__main__'
+        'show_object': show_object
     })
 
     return objects
@@ -69,11 +68,11 @@ def to_stl(cq_object, directory):
 
 @app.route('/styles/<path:path>')
 def styles(path):
-    return send_from_directory('styles', path)
+    return flask.send_from_directory('styles', path)
 
 @app.route('/models/<path:path>')
 def viewer(path):
-    return render_template('viewer.html', path=path)
+    return flask.render_template('viewer.html', path=path)
 
 @app.route('/stl/models/<path:path>')
 def stl(path):
@@ -103,14 +102,14 @@ def export(index, path):
     stls = exported_stls.get(path)
 
     if stls is None or index >= len(stls):
-        abort(404)
+        flask.abort(404)
 
     filename = f'{Path(path).stem}-{index + 1}.stl'
 
-    return Response(
+    return flask.Response(
         stls[index],
-        mimetype='model/stl',
-        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        mimetype='model/stl'
     )
 
 if __name__ == '__main__':
